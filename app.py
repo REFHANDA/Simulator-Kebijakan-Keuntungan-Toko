@@ -109,7 +109,6 @@ st.markdown("""
 # LOAD MODEL
 # ==========================================================
 
-@st.cache_resource(show_spinner=False)
 def load_artifacts():
     if not MODEL_PATH.exists():
         st.error(
@@ -130,7 +129,6 @@ def load_artifacts():
 # SHAP EXPLAINER
 # ==========================================================
 
-@st.cache_resource(show_spinner=False)
 def load_explainer(
     _model, 
     _scaler
