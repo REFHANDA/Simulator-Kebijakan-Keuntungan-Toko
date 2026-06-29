@@ -131,9 +131,15 @@ def load_artifacts():
 # ==========================================================
 
 @st.cache_resource(show_spinner=False)
-def load_explainer(model, scaler):
-    background = scaler.transform(X_TRAIN_REF)
-    return shap.LinearExplainer(model, background)
+def load_explainer(
+    _model, 
+    _scaler
+):
+    background = _scaler.transform(X_TRAIN_REF)
+    return shap.LinearExplainer(
+        _model, 
+        background
+    )
 
 
 # ==========================================================
