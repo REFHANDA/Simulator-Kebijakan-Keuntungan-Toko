@@ -1,0 +1,40 @@
+[INFO] ============================================================
+[INFO] MEMULAI PROSES TRAINING
+[INFO] ============================================================
+[INFO] ============================================================
+[INFO] PIPELINE TRAINING DIMULAI
+[INFO] ============================================================
+[INFO] Menyiapkan data historis...
+[INFO] Jumlah sampel : 5
+[INFO] Jumlah fitur  : 2
+[INFO] Shape X       : (5, 2)
+[INFO] Shape y       : (5,)
+[INFO] Memulai proses training model...
+[INFO] Training selesai.
+[INFO] Koefisien Model : [ 33.1019 -11.3448]
+[INFO] Intercept       : 96.0000
+[INFO] Menghitung metrik evaluasi...
+[INFO] --------------------------------------------------
+[INFO] MAE  : 9.046
+[INFO] RMSE : 10.241
+[INFO] R²   : 0.9050
+[INFO] --------------------------------------------------
+[INFO] Metadata model berhasil dibuat.
+[INFO] Menyimpan artefak model...
+[INFO] Seluruh artefak berhasil disimpan.
+[INFO] ------------------------------------------------------------
+[INFO] Verifikasi file hasil penyimpanan
+[INFO] ✓ model_keuntungan_v1.joblib (0.59 KB)
+[INFO] ✓ scaler_keuntungan_v1.joblib (0.62 KB)
+[INFO] ✓ metrics_keuntungan_v1.joblib (0.37 KB)
+[INFO] ✓ model_bundle.joblib (1.32 KB)
+[INFO] ------------------------------------------------------------
+[INFO] Melakukan validasi artefak...
+[INFO] Prediksi validasi : 80.62
+[INFO] Versi model       : 1.0.0
+[INFO] Algoritma         : Linear Regression
+[INFO] Training Time     : 2026-06-29 21:29:08
+[INFO] Validasi artefak berhasil.
+[INFO] ============================================================
+[INFO] TRAINING BERHASIL DISELESAIKAN
+[INFO] ============================================================

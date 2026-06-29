@@ -1,82 +1,292 @@
-"""
-train_model.py
-==============
-Skrip FASE PENGEMBANGAN (Development).
+from pathlib import Path
+from datetime import datetime
+import logging
 
-Sesuai prinsip MLOps Minggu 15: proses training dipisahkan dari aplikasi
-deployment (app.py). Jalankan skrip ini SEKALI untuk melatih model dan
-menyimpannya ke disk dalam format .joblib. Setelah itu, app.py hanya
-perlu memuat (load) file hasil training ini tanpa melatih ulang.
-
-Cara menjalankan:
-    python train_model.py
-
-Output:
-    models/model_keuntungan_v1.joblib
-    models/scaler_keuntungan_v1.joblib
-"""
-
-import os
-import numpy as np
 import joblib
+import numpy as np
+
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import root_mean_squared_error
+from sklearn.metrics import (
+    mean_absolute_error,
+    root_mean_squared_error,
+    r2_score,
+)
 
-MODEL_DIR = "models"
-MODEL_PATH = os.path.join(MODEL_DIR, "model_keuntungan_v1.joblib")
-SCALER_PATH = os.path.join(MODEL_DIR, "scaler_keuntungan_v1.joblib")
-METRICS_PATH = os.path.join(MODEL_DIR, "metrics_keuntungan_v1.joblib")
+# ==========================================================
+# KONFIGURASI
+# ==========================================================
+
+CONFIG = {
+    "random_seed": 42,
+    "model_version": "1.0.0",
+    "algorithm": "Linear Regression",
+}
+
+np.random.seed(CONFIG["random_seed"])
+
+# ==========================================================
+# PATH
+# ==========================================================
+
+MODEL_DIR = Path("models")
+
+MODEL_PATH   = MODEL_DIR / "model_keuntungan_v1.joblib"
+SCALER_PATH  = MODEL_DIR / "scaler_keuntungan_v1.joblib"
+METRICS_PATH = MODEL_DIR / "metrics_keuntungan_v1.joblib"
+BUNDLE_PATH  = MODEL_DIR / "model_bundle.joblib"
+LOG_PATH     = MODEL_DIR / "training.log"
+
+# ==========================================================
+# LOGGING
+# ==========================================================
+
+MODEL_DIR.mkdir(parents=True, exist_ok=True)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler(LOG_PATH, encoding="utf-8"),
+        logging.StreamHandler(),
+    ],
+)
+
+logger = logging.getLogger(__name__)
+
+logger.info("=" * 60)
+logger.info("MEMULAI PROSES TRAINING")
+logger.info("=" * 60)
+
+# ==========================================================
+# DATA PREPARATION
+# ==========================================================
+
+def prepare_data() -> tuple[np.ndarray, np.ndarray]:
+    """Menyiapkan data historis untuk proses training."""
+    logger.info("Menyiapkan data historis...")
+
+    training_data = {
+        "iklan":      [5, 10, 15, 20, 25],
+        "diskon":     [10, 20, 5, 25, 15],
+        "keuntungan": [50, 80, 110, 90, 150],
+    }
+
+    X_train = np.column_stack([
+        training_data["iklan"],
+        training_data["diskon"],
+    ]).astype(float)
+
+    y_train = np.array(training_data["keuntungan"], dtype=float)
+
+    logger.info("Jumlah sampel : %d", len(X_train))
+    logger.info("Jumlah fitur  : %d", X_train.shape[1])
+    logger.info("Shape X       : %s", X_train.shape)
+    logger.info("Shape y       : %s", y_train.shape)
+
+    return X_train, y_train
 
 
-def main():
-    os.makedirs(MODEL_DIR, exist_ok=True)
+# ==========================================================
+# TRAIN MODEL
+# ==========================================================
 
-    # 1. Data historis (Baseline)
-    # Fitur: [Anggaran Iklan (Juta), Besaran Diskon (%)]
-    X_train = np.array([[5, 10], [10, 20], [15, 5], [20, 25], [25, 15]], dtype=float)
-    # Target: Keuntungan (Juta)
-    y_train = np.array([50, 80, 110, 90, 150], dtype=float)
+def train_model(
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+) -> tuple[LinearRegression, StandardScaler, np.ndarray]:
+    """
+    Melatih model Linear Regression beserta scaler.
 
-    # 2. Preprocessing (Scaler)
+    Parameters
+    ----------
+    X_train : np.ndarray
+        Data fitur.
+    y_train : np.ndarray
+        Target.
+
+    Returns
+    -------
+    model, scaler, X_scaled
+    """
+    logger.info("Memulai proses training model...")
+
     scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
+    X_scaled = scaler.fit_transform(X_train)
 
-    # 3. Training Model (Mesin Replika / Digital Twin)
-    model = LinearRegression().fit(X_train_scaled, y_train)
-    print("Model dan Scaler berhasil dilatih pada data historis.")
+    model = LinearRegression(fit_intercept=True, copy_X=True, positive=False)
+    model.fit(X_scaled, y_train)
 
-    # 4. Evaluasi Error Model (untuk komunikasi ketidakpastian di UI - M16 Soal 8)
-    y_pred_train = model.predict(X_train_scaled)
-    rmse = root_mean_squared_error(y_train, y_pred_train)
-    metrics = {
-        "rmse": float(rmse),
+    logger.info("Training selesai.")
+    logger.info("Koefisien Model : %s", np.round(model.coef_, 4))
+    logger.info("Intercept       : %.4f", model.intercept_)
+
+    return model, scaler, X_scaled
+
+
+# ==========================================================
+# EVALUASI MODEL
+# ==========================================================
+
+def evaluate_model(
+    model: LinearRegression,
+    X_scaled: np.ndarray,
+    y_train: np.ndarray,
+    X_train: np.ndarray,
+) -> dict:
+    """Menghitung performa model dan membuat metadata."""
+    logger.info("Menghitung metrik evaluasi...")
+
+    y_pred = model.predict(X_scaled)
+
+    mae  = mean_absolute_error(y_train, y_pred)
+    rmse = root_mean_squared_error(y_train, y_pred)
+    r2   = r2_score(y_train, y_pred)
+
+    logger.info("-" * 50)
+    logger.info("MAE  : %.3f", mae)
+    logger.info("RMSE : %.3f", rmse)
+    logger.info("R²   : %.4f", r2)
+    logger.info("-" * 50)
+
+    metadata = {
+        "version":    CONFIG["model_version"],
+        "algorithm":  CONFIG["algorithm"],
+        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "samples":    int(len(X_train)),
+        "features":   int(X_train.shape[1]),
         "feature_names": ["Anggaran Iklan", "Besaran Diskon"],
         "training_range": {
-            "iklan_min": float(X_train[:, 0].min()), "iklan_max": float(X_train[:, 0].max()),
-            "diskon_min": float(X_train[:, 1].min()), "diskon_max": float(X_train[:, 1].max()),
+            "iklan_min":  float(X_train[:, 0].min()),
+            "iklan_max":  float(X_train[:, 0].max()),
+            "diskon_min": float(X_train[:, 1].min()),
+            "diskon_max": float(X_train[:, 1].max()),
         },
+        "metrics": {
+            "MAE":  float(mae),
+            "RMSE": float(rmse),
+            "R2":   float(r2),
+        },
+        "baseline_prediction": float(np.mean(y_pred)),
     }
-    print(f"RMSE pada data latih: {rmse:.2f} Juta (ini merepresentasikan rentang ketidakpastian model)")
 
-    # 5. Persistensi Model (Model Exporting)
-    joblib.dump(model, MODEL_PATH)
-    joblib.dump(scaler, SCALER_PATH)
-    joblib.dump(metrics, METRICS_PATH)
-    print(f"Tersimpan: {MODEL_PATH}")
-    print(f"Tersimpan: {SCALER_PATH}")
-    print(f"Tersimpan: {METRICS_PATH}")
+    logger.info("Metadata model berhasil dibuat.")
+    return metadata
 
-    # 6. Validasi cepat (Validation Script): load ulang & coba prediksi
-    loaded_model = joblib.load(MODEL_PATH)
-    loaded_scaler = joblib.load(SCALER_PATH)
 
-    data_baru = np.array([[10.0, 10.0]])  # Baseline check
-    data_baru_scaled = loaded_scaler.transform(data_baru)
-    hasil = loaded_model.predict(data_baru_scaled)[0]
-    print(f"Validasi baseline (Iklan=10, Diskon=10) -> Prediksi Keuntungan: "
-          f"Rp {hasil:.2f} ± {rmse:.2f} Juta")
+# ==========================================================
+# SAVE ARTIFACTS
+# ==========================================================
 
+def save_artifacts(
+    model: LinearRegression,
+    scaler: StandardScaler,
+    metadata: dict,
+) -> None:
+    """Menyimpan seluruh artefak model ke dalam folder models."""
+    logger.info("Menyimpan artefak model...")
+
+    MODEL_DIR.mkdir(parents=True, exist_ok=True)
+
+    joblib.dump(model,    MODEL_PATH)
+    joblib.dump(scaler,   SCALER_PATH)
+    joblib.dump(metadata, METRICS_PATH)
+
+    bundle = {"model": model, "scaler": scaler, "metadata": metadata}
+    joblib.dump(bundle, BUNDLE_PATH)
+
+    logger.info("Seluruh artefak berhasil disimpan.")
+
+    # Verifikasi file
+    artifacts = [MODEL_PATH, SCALER_PATH, METRICS_PATH, BUNDLE_PATH]
+
+    logger.info("-" * 60)
+    logger.info("Verifikasi file hasil penyimpanan")
+
+    for file in artifacts:
+        if file.exists():
+            size_kb = file.stat().st_size / 1024
+            logger.info("✓ %s (%.2f KB)", file.name, size_kb)
+        else:
+            raise FileNotFoundError(f"{file} gagal dibuat.")
+
+    logger.info("-" * 60)
+
+
+# ==========================================================
+# VALIDATION
+# ==========================================================
+
+def validate_model() -> None:
+    """
+    Memastikan model yang telah disimpan dapat dimuat kembali
+    dan menghasilkan prediksi.
+    """
+    logger.info("Melakukan validasi artefak...")
+
+    bundle   = joblib.load(BUNDLE_PATH)
+    model    = bundle["model"]
+    scaler   = bundle["scaler"]
+    metadata = bundle["metadata"]
+
+    sample        = np.array([[10.0, 10.0]])
+    sample_scaled = scaler.transform(sample)
+    prediction    = model.predict(sample_scaled)[0]
+
+    logger.info("Prediksi validasi : %.2f", prediction)
+    logger.info("Versi model       : %s",   metadata["version"])
+    logger.info("Algoritma         : %s",   metadata["algorithm"])
+    logger.info("Training Time     : %s",   metadata["created_at"])
+    logger.info("Validasi artefak berhasil.")
+
+
+# ==========================================================
+# MAIN
+# ==========================================================
+
+def main() -> None:
+    """
+    Pipeline utama training model.
+
+    Tahapan:
+    1. Menyiapkan data
+    2. Training model
+    3. Evaluasi performa
+    4. Menyimpan artefak
+    5. Validasi hasil simpan
+    """
+    logger.info("=" * 60)
+    logger.info("PIPELINE TRAINING DIMULAI")
+    logger.info("=" * 60)
+
+    try:
+        X_train, y_train = prepare_data()
+
+        model, scaler, X_scaled = train_model(X_train, y_train)
+
+        metadata = evaluate_model(
+            model=model,
+            X_scaled=X_scaled,
+            y_train=y_train,
+            X_train=X_train,
+        )
+
+        save_artifacts(model=model, scaler=scaler, metadata=metadata)
+
+        validate_model()
+
+        logger.info("=" * 60)
+        logger.info("TRAINING BERHASIL DISELESAIKAN")
+        logger.info("=" * 60)
+
+    except Exception as err:
+        logger.exception("Training gagal karena terjadi error:")
+        raise err
+
+
+# ==========================================================
+# ENTRY POINT
+# ==========================================================
 
 if __name__ == "__main__":
     main()
